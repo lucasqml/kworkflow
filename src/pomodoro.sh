@@ -55,7 +55,9 @@ function pomodoro_main()
     while true; do
       tput cup 0 0
       show_active_pomodoro_timebox "$flag"
-      sleep 1
+      echo 'Press Q to quit'
+      read -r -n 1 -t 1 key
+      [[ "$key" == 'q' || "$key" == 'Q' ]] && break
     done
     return 0
   fi
