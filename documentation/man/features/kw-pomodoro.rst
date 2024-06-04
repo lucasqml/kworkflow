@@ -55,6 +55,10 @@ OPTIONS
 -s, \--show-tags:
   This option shows all the registered tags.
 
+-w, \--watch:
+  This option will keep the terminal open and constantly display the current active
+  timers status. Note that only tagged timers will be displayed.
+
 \--verbose:
   Display commands executed under the hood.
 
