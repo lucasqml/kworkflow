@@ -63,6 +63,7 @@ function watch_loop()
   local flag="$1"
   local previous_timeboxes_amount=0
   local current_timeboxes_amount=$(get_current_timeboxes_amount "$flag")
+  local command_output=''
 
   if [[ "$current_timeboxes_amount" -eq 0 ]]; then
     if [[ -n "${options_values['TIMER']}" ]]; then
@@ -95,10 +96,19 @@ function watch_loop()
     show_active_pomodoro_timebox "$flag"
 
     # Collect user actions
+    printf '%s\n' 'Press P to pause the timer'
     printf '%s\n' 'Press Q to quit'
     read -r -n 1 -t 1 key
     if [[ "$key" == 'q' || "$key" == 'Q' ]] ; then
       return 0
+    fi
+    if [[ "$key" == 'p' || "$key" == 'P' ]] ; then
+      command_output=$(stop_timer "$flag")
+      if [[ -n "$command_output" ]]; then
+        cmd_manager "$flag" "clear"
+        say "$command_output"
+        cmd_manager "$flag" "sleep 1"
+      fi
     fi
   done
 
@@ -114,6 +124,54 @@ function get_current_timeboxes_amount()
   current_timeboxes_amount=$(select_from 'active_timebox' 'COUNT(*)' '' '' '' "$flag")
   printf '%s\n' "${current_timeboxes_amount}"
 }
+
+function stop_timer()
+{
+  local flag="$1"
+  local current_timestamp
+  local start_date
+  local start_time
+  local timestamp
+  local elapsed_time
+  local raw_active_timebox
+  local new_duration
+  declare -A condition_array
+
+  current_timestamp=$(get_timestamp_sec)
+
+  # Get the active timebox
+  while IFS=$'\n' read -r raw_active_timebox && [[ -n "${raw_active_timebox}" ]]; do
+    start_date=$(printf '%s' "${raw_active_timebox}" | cut -d '|' -f1)
+    start_time=$(printf '%s' "${raw_active_timebox}" | cut -d '|' -f2)
+    tag_name=$(printf '%s' "${raw_active_timebox}" | cut -d '|' -f3)
+    
+    timestamp=$(date --date="${start_date} ${start_time}" '+%s')
+    elapsed_time=$((current_timestamp - timestamp))
+
+  done <<< "$(select_from 'active_timebox' '"date","time","tag"' '' '' '' "$flag")"
+
+  # Remove the active timebox from the database
+  condition_array=(['tag_name']="${tag_name}" ['date']="${start_date}" ['time']="${start_time}")
+  remove_from '"pomodoro_report"' 'condition_array' '' '' "$flag" 
+
+  # Insert the elapsed time into the database as a new report
+  local columns='("tag_name","date","time","duration","description")'
+  local -a values=()
+  local formatted_data
+
+  new_duration=$((elapsed_time))
+  
+  # description="${options_values['DESCRIPTION']}"
+  [[ -z "$description" ]] && description='NULL'
+  values=("${tag_name}" "${start_date}" "${start_time}" "${new_duration}" "description")
+
+  formatted_data="$(format_values_db 5 "${values[@]}")"
+  insert_into '"pomodoro_report"' "$columns" "${formatted_data}" '' "$flag"
+  
+  # Show the elapsed time
+  printf 'Elapsed time: %s\n' "$(secs_to_arbitrarily_long_hours_mins_secs "${new_duration}")"
+}
+
 
 # This function inspects the Pomodoro file, and based on each line, information
 # tells the user the current status of his work section.
